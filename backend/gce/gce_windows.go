@@ -73,11 +73,25 @@ func (g *GCEHostGW) ensureMetadataRoute() error {
 		return err
 	}
 
-	nr := netroute.New()
 	_, mdaddr, _ := net.ParseCIDR("169.254.169.254/32")
-	gw := net.ParseIP("0.0.0.0")
+	gwaddr := net.ParseIP("0.0.0.0")
 
-	return nr.NewNetRoute(i.Idx, mdaddr, gw)
+	route := netroute.Route{
+		LinkIndex: i.Idx,
+		DestinationSubnet: mdaddr,
+		GatewayAddress: gwaddr,
+	}
+
+	nr := netroute.New()
+	routes, _ := nr.GetNetRoutes(i.Idx, mdaddr)
+	for _, r := range routes {
+		if r.Equal(route) {
+			log.Info("Metadata route already exists.. %+v ", route)
+			return nil
+		}
+	}
+
+	return nr.NewNetRoute(i.Idx, mdaddr, gwaddr)
 }
 
 func (g *GCEHostGW) ensureAPI() error {
