@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/coreos/flannel/pkg/ip"
 	"google.golang.org/api/googleapi"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -64,6 +65,21 @@ func New(sm subnet.Manager, extIface *backend.ExternalInterface) (backend.Backen
 	return be, nil
 }
 
+func (g *GCEHostGW) ensureMetadataRoute() error {
+	ns := netsh.New(utilexec.New())
+
+	i, err := ns.GetInterfaceByName("vEthernet (Ethernet)")
+	if err != nil {
+		return err
+	}
+
+	nr := netroute.New()
+	_, mdaddr, _ := net.ParseCIDR("169.254.169.254/32")
+	gw := net.ParseIP("0.0.0.0")
+
+	return nr.NewNetRoute(i.Idx, mdaddr, gw)
+}
+
 func (g *GCEHostGW) ensureAPI() error {
 	var err error
 	g.apiInit.Do(func() {
@@ -73,6 +89,11 @@ func (g *GCEHostGW) ensureAPI() error {
 }
 
 func (be *GCEHostGW) RegisterNetwork(ctx context.Context, wg sync.WaitGroup, config *subnet.Config) (backend.Network, error) {
+	err := be.ensureMetadataRoute()
+	if err != nil {
+		return nil, err
+	}
+
 	attrs := subnet.LeaseAttrs{
 		PublicIP: ip.FromIP(be.extIface.ExtAddr),
 	}
